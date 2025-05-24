@@ -17,6 +17,11 @@ export class AuthController {
     return this.authService.signup(signUpData);
   }
 
+  @Post('verify-email')
+  async verifyEmail(@Body() verifyDto: { email: string; code: string }) {
+    return this.authService.verifyEmail(verifyDto.email, verifyDto.code);
+  }
+
   @Post('signIn')
   async signIn(@Body() credentials: SignInDto) {
     return this.authService.signin(credentials);

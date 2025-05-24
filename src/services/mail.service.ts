@@ -38,4 +38,21 @@ export class MailService {
       throw new Error('Could not send reset email');
     }
   }
+
+  async sendEmailVerification(to: string, code: string) {
+    const mailOptions = {
+      from: `"Auth-backend service" <${this.configService.get<string>('mail.user')}>`,
+      to,
+      subject: 'Verify Your Email Address',
+      html: `<p>Your verification code is:</p><h2>${code}</h2><p>This code expires in 15 minutes.</p>`,
+    };
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      await this.transporter.sendMail(mailOptions);
+    } catch (err) {
+      console.error('❌ Failed to send email verification code:', err);
+      throw new Error('Could not send email verification');
+    }
+  }
 }

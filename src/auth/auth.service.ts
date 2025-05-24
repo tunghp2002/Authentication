@@ -29,21 +29,73 @@ export class AuthService {
     private jwtService: JwtService,
     private mailService: MailService,
   ) {}
+
+  /* Sign up */
   async signup(signUpData: SignUpDto) {
     const { email, password, name } = signUpData;
 
-    const emailInUse = await this.UserModel.findOne({
-      email,
-    });
-
-    if (emailInUse) {
+    const existingUser = await this.UserModel.findOne({ email });
+    if (existingUser) {
       throw new BadRequestException('Email already in use');
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    const verificationCode = Math.floor(
+      100000 + Math.random() * 900000,
+    ).toString(); // 6 số
+    const expiryDate = new Date(Date.now() + 15 * 60 * 1000); // Hết hạn sau 15 phút
 
-    await this.UserModel.create({ name, email, password: hashedPassword });
+    await this.UserModel.create({
+      name,
+      email,
+      password: hashedPassword,
+      isVerified: false,
+      emailVerificationCode: verificationCode,
+      emailVerificationExpires: expiryDate,
+    });
+
+    try {
+      await this.mailService.sendEmailVerification(email, verificationCode);
+    } catch (e) {
+      Logger.error((e as Error).message);
+      throw new InternalServerErrorException(
+        'Failed to send verification email',
+      );
+    }
+
+    return {
+      message: 'Signup successful. Please verify your email.',
+    };
   }
+
+  async verifyEmail(email: string, code: string) {
+    const user = await this.UserModel.findOne({ email });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.isVerified) {
+      throw new BadRequestException('Email already verified');
+    }
+
+    if (
+      user.emailVerificationCode !== code ||
+      !user.emailVerificationExpires ||
+      user.emailVerificationExpires < new Date()
+    ) {
+      throw new UnauthorizedException('Invalid or expired verification code');
+    }
+
+    user.isVerified = true;
+    user.emailVerificationCode = undefined;
+    user.emailVerificationExpires = undefined;
+    await user.save();
+
+    return { message: 'Email verified successfully' };
+  }
+
+  /* Sign in */
 
   async signin(credentials: SignInDto) {
     const { email, password } = credentials;
@@ -53,6 +105,12 @@ export class AuthService {
 
     if (!user) {
       throw new UnauthorizedException('Wrong credentials');
+    }
+
+    if (!user.isVerified) {
+      throw new UnauthorizedException(
+        'Please verify your email before logging in',
+      );
     }
 
     const passwordMatch = await bcrypt.compare(password, user.password);
@@ -71,6 +129,8 @@ export class AuthService {
       userId: user._id,
     };
   }
+
+  /* Change password */
 
   async changePassword(
     userId: mongoose.Types.ObjectId,
